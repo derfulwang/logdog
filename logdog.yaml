@@ -1,4 +1,5 @@
-﻿Filename: 'D://邮件下载//pppp//log_moniter//test.log'
+﻿Filenames: 
+  - 'D:/mygit/logdog/test.log'
 Keywords:
   - '[ERROR]'
   - '[WARNING]'
