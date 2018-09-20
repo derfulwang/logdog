@@ -40,11 +40,20 @@ class ConfigUpdateHandler(FileSystemEventHandler):
 
     def check_config(self, conf):
         if conf:
-            logfiles = conf['Filenames']
-            logdir = {os.path.dirname(f) for f in logfiles}
-            logging.info(logdir)
-            assert len(logdir) == 1
-            conf['logpath'] = logdir.pop()
+            logdirs = conf['Filenames']
+            path_dict = {}
+            logfiles = []
+            for path, fnames in logdirs.items():
+                if path not in path_dict:
+                    path_dict[path] = []
+                for fname in fnames:
+                    path_dict[path].append(os.path.join(path,fname))
+                logfiles.append(os.path.join(path,fname))
+        
+            logging.info(path_dict)
+            logging.info(logfiles)
+            conf['logpathes'] = path_dict
+            conf['logfiles'] = logfiles
         else:
             raise Exception("No config file")
 
@@ -73,7 +82,7 @@ class LogUpdateHandler(FileSystemEventHandler):
         global Conf
         self.conf = Conf
         self.logfiles = {}
-        for fp in self.conf['Filenames']:
+        for fp in self.conf['logfiles']:
             try:
                 logf = open(fp, 'r')
             except IOError:
@@ -96,11 +105,11 @@ class LogUpdateHandler(FileSystemEventHandler):
             line = curfile.readline()
             if line in self.skip_chars:
                 break
-            self.handle_callback(line)
+            self.handle_callback(line, change_f)
                                   
-    def handle_callback(self, line):
+    def handle_callback(self, line, filename):
         for callback in self.callbacks:
-            callback(line, self.conf)
+            callback(line, filename, self.conf)
 
     def __del__(self):
         for f, fp in self.logfiles.items():
@@ -111,13 +120,13 @@ to_handle = LogUpdateHandler.to_handle
 
 
 @to_handle
-def keyword_detect(line, conf):
+def keyword_detect(line, filename, conf):
     for kw in conf['Keywords']:
         if line.find(kw) != -1:
-            print(line)
+            print(filename, line)
             break
     else:
-        print('no', line)
+        print('no', filename ,line)
 
 
 
@@ -125,7 +134,7 @@ def main():
     global Conf
     yaml_path = './logdog.yaml'
     conf_handler = ConfigUpdateHandler(yaml_path)
-    logpath = Conf['logpath']
+    logpathes = Conf['logpathes']
 
     
     handler = LogUpdateHandler(call_backs=[])
@@ -133,8 +142,10 @@ def main():
     observer = Observer()
     observer.schedule(
         conf_handler, path=os.path.dirname(yaml_path), recursive=False)
-    observer.schedule(
-        handler, path=logpath, recursive=False)
+
+    for path, fnames in logpathes.items():
+        observer.schedule(
+            handler, path=path, recursive=False)
     observer.start()
     try:
         while True:
