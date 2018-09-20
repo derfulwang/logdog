@@ -16,43 +16,84 @@ from __future__ import print_function
 import sys
 import os
 import time
+import logging
 
 import yaml
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
+logging.basicConfig(
+    filename=os.path.join(sys.path[0],"logdog.log"),
+    level=logging.DEBUG,
+    format="%(asctime)s %(filename)s[line:%(lineno)d] [%(levelname)s]\
+        %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S")
+
+Conf = {}  # global config
+
+class ConfigUpdateHandler(FileSystemEventHandler):
+
+    def __init__(self, conf_path):
+        self.conf_path = conf_path
+        self.conf= self.get_yaml_obj(conf_path)
+
+    def check_config(self, conf):
+        if conf:
+            logfiles = conf['Filenames']
+            logdir = {os.path.dirname(f) for f in logfiles}
+            logging.info(logdir)
+            assert len(logdir) == 1
+            conf['logpath'] = logdir.pop()
+        else:
+            raise Exception("No config file")
+
+    def on_modified(self, event):
+        if os.path.basename(event.src_path) == os.path.basename(self.conf_path):
+            self.conf = self.get_yaml_obj(self.conf_path)
+
+    def get_yaml_obj(self, yaml_path):
+        global Conf
+        with open(yaml_path, 'rb') as yml:
+            Conf = yaml.load(yml)
+        print(Conf)
+        self.check_config(Conf)
+        #logging.info(Conf)
+        return Conf
 
 class LogUpdateHandler(FileSystemEventHandler):
 
     __handle_funcs = []
 
-    def __init__(self, yaml_path, call_backs):
-        self.yaml_path = yaml_path
-        self.conf = self.get_yaml_obj(yaml_path)
-        print(self.conf)
-        self.logfile = open(self.conf['Filename'], 'r')
+    @classmethod
+    def to_handle(cls, func):
+        cls.__handle_funcs.append(func)
+
+    def __init__(self, call_backs):
+        global Conf
+        self.conf = Conf
+        self.logfiles = {}
+        for fp in self.conf['Filenames']:
+            try:
+                logf = open(fp, 'r')
+            except IOError:
+                logging.exception('open {0} failed'.format(fp))
+                continue
+            logf.seek(0,2)
+            self.logfiles[os.path.normpath(fp)] = logf
+
         self.skip_chars = {'','\n',None}
-
         self.callbacks = call_backs + self.__handle_funcs
-        while self.logfile.readline():
-            pass
-        #self.logfile.seek(0,2)
-
-    def get_yaml_obj(self, yaml_path):
-        with open(yaml_path, 'rb') as yml:
-            conf = yaml.load(yml)
-        return conf
+        #while self.logfile.readline():
+        #    pass
 
     def on_modified(self, event):
-        if os.path.basename(event.src_path) == os.path.basename(self.yaml_path): # 动态加载配置
-            self.conf = self.get_yaml_obj(event.src_path)
-            print(self.conf)
-            return
-        if os.path.normpath(self.logfile.name) != os.path.normpath(event.src_path):
+        change_f = os.path.normpath(event.src_path)
+        if change_f not in self.logfiles:
             return
         while True:
-            line = self.logfile.readline()
+            curfile = self.logfiles[change_f]
+            line = curfile.readline()
             if line in self.skip_chars:
                 break
             self.handle_callback(line)
@@ -61,12 +102,9 @@ class LogUpdateHandler(FileSystemEventHandler):
         for callback in self.callbacks:
             callback(line, self.conf)
 
-    @classmethod
-    def to_handle(cls, func):
-        cls.__handle_funcs.append(func)
-
     def __del__(self):
-        self.logfile.close()
+        for f, fp in self.logfiles.items():
+            fp.close()
 
 
 to_handle = LogUpdateHandler.to_handle
@@ -84,11 +122,19 @@ def keyword_detect(line, conf):
 
 
 def main():
+    global Conf
     yaml_path = './logdog.yaml'
-    handler = LogUpdateHandler(yaml_path, call_backs=[])
+    conf_handler = ConfigUpdateHandler(yaml_path)
+    logpath = Conf['logpath']
+
+    
+    handler = LogUpdateHandler(call_backs=[])
+  
     observer = Observer()
     observer.schedule(
-        handler, path=os.path.split(os.path.abspath(yaml_path))[0], recursive=False)
+        conf_handler, path=os.path.dirname(yaml_path), recursive=False)
+    observer.schedule(
+        handler, path=logpath, recursive=False)
     observer.start()
     try:
         while True:
