@@ -50,9 +50,6 @@ class ConfigUpdateHandler(FileSystemEventHandler):
                 for fname in fnames:
                     path_dict[path].append(os.path.join(path,fname))
                 logfiles.append(os.path.join(path,fname))
-        
-            logging.info(path_dict)
-            logging.info(logfiles)
             conf['logpathes'] = path_dict
             conf['logfiles'] = logfiles
         else:
@@ -60,7 +57,10 @@ class ConfigUpdateHandler(FileSystemEventHandler):
 
     def on_modified(self, event):
         if os.path.basename(event.src_path) == os.path.basename(self.conf_path):
+            last_conf = self.conf
             self.conf = self.get_yaml_obj(self.conf_path)
+            logging.info("config file <{0}> change from: {1} to {2}".format(
+                self.conf_path, last_conf, self.conf))
 
     def get_yaml_obj(self, yaml_path):
         global Conf
@@ -69,7 +69,6 @@ class ConfigUpdateHandler(FileSystemEventHandler):
                 Conf = yaml.load(yml)
         except Exception as e:
             logging.exception('yaml file should be correct format')
-        print(Conf)
         self.check_config(Conf)
         #logging.info(Conf)
         return Conf
@@ -137,12 +136,13 @@ def keyword_detect(line, filename, conf):
 @click.option('--config', default='./logdog.yaml', help='yaml config file path')
 def main(config):
     global Conf
+    if not os.path.dirname(config):
+        config = os.path.join(sys.path[0], config)
     yaml_path = config
     assert os.path.isfile(yaml_path) == True
     conf_handler = ConfigUpdateHandler(yaml_path)
     logpathes = Conf['logpathes']
 
-    
     handler = LogUpdateHandler(call_backs=[])
   
     observer = Observer()
