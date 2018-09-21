@@ -19,6 +19,7 @@ import time
 import logging
 
 import yaml
+import click
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -63,8 +64,11 @@ class ConfigUpdateHandler(FileSystemEventHandler):
 
     def get_yaml_obj(self, yaml_path):
         global Conf
-        with open(yaml_path, 'rb') as yml:
-            Conf = yaml.load(yml)
+        try:
+            with open(yaml_path, 'rb') as yml:
+                Conf = yaml.load(yml)
+        except Exception as e:
+            logging.exception('yaml file should be correct format')
         print(Conf)
         self.check_config(Conf)
         #logging.info(Conf)
@@ -129,10 +133,12 @@ def keyword_detect(line, filename, conf):
         print('no', filename ,line)
 
 
-
-def main():
+@click.command()
+@click.option('--config', default='./logdog.yaml', help='yaml config file path')
+def main(config):
     global Conf
-    yaml_path = './logdog.yaml'
+    yaml_path = config
+    assert os.path.isfile(yaml_path) == True
     conf_handler = ConfigUpdateHandler(yaml_path)
     logpathes = Conf['logpathes']
 
