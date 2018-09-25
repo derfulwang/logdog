@@ -49,7 +49,7 @@ class ConfigUpdateHandler(FileSystemEventHandler):
                     path_dict[path] = []
                 for fname in fnames:
                     path_dict[path].append(os.path.join(path,fname))
-                logfiles.append(os.path.join(path,fname))
+                    logfiles.append(os.path.join(path,fname))
             conf['logpathes'] = path_dict
             conf['logfiles'] = logfiles
         else:
@@ -103,10 +103,10 @@ class LogUpdateHandler(FileSystemEventHandler):
         change_f = os.path.normpath(event.src_path)
         if change_f not in self.logfiles:
             return
+        curfile = self.logfiles[change_f]
         while True:
-            curfile = self.logfiles[change_f]
             line = curfile.readline()
-            if line in self.skip_chars:
+            if line == '':
                 break
             self.handle_callback(line, change_f)
                                   
