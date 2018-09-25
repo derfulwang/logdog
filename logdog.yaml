@@ -1,9 +1,8 @@
 ﻿Filenames: 
-    'D:/mygit/logdog':
-      - test.log
-      - test2.log
-    'D:/mygit/logdog/log1':
-      - test1.log
+    - 'D:/mygit/logdog/test.log'
+    - 'D:/mygit/logdog/test2.log'
+    - 'D:/mygit/logdog/log1/test1.log'
+    #- 'D:/mygit/logdog/log2/test1.log'
 Keywords:
   - '[ERROR]'
   - '[WARNING]'
