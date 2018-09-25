@@ -45,17 +45,15 @@ class ConfigUpdateHandler(FileSystemEventHandler):
 
     def check_config(self, conf):
         if conf:
-            logdirs = conf['Filenames']
-            path_dict = {}
-            logfiles = []
-            for path, fnames in logdirs.items():
-                if path not in path_dict:
-                    path_dict[path] = []
-                for fname in fnames:
-                    path_dict[path].append(os.path.join(path,fname))
-                    logfiles.append(os.path.join(path,fname))
-            conf['logpathes'] = path_dict
-            conf['logfiles'] = logfiles
+            logfiles = conf['Filenames']
+            for i in range(len(conf['Filenames'])):
+                conf['Filenames'][i] = os.path.realpath(conf['Filenames'][i])                
+            assert len(logfiles) > 0
+            conf['logpathes'] = set()
+            for f in logfiles:
+                conf['logpathes'].add(os.path.dirname(f))
+                assert os.path.isfile(f) == True
+            
         else:
             raise Exception("No config file")
 
@@ -67,11 +65,11 @@ class ConfigUpdateHandler(FileSystemEventHandler):
                 self.conf_path, last_conf, self.conf))
             self.remove_log_handlers()
             self.add_log_handlers()
-            print(self.observer._watches)
+            print('--',self.observer._watches)
 
     def add_log_handlers(self):
         recursive = False
-        for path, fnames in self.conf['logpathes'].items():
+        for path in self.conf['logpathes']:
             ow = ObservedWatch(path, recursive)
             if ow not in self.observer._watches:
                 self.observer.schedule(
@@ -83,9 +81,9 @@ class ConfigUpdateHandler(FileSystemEventHandler):
     def remove_log_handlers(self):
         no_watches = []
         for w in self.observer._watches:
-            if w.path == os.path.dirname(self.conf_path):
+            if w.path == os.path.dirname(self.conf_path): # 和配置文件同一目录
                 to_del = []
-                for h in self.observer._handlers[w]:
+                for h in self.observer._handlers[w]: # 看目录下对应的handler
                     if isinstance(h, self.__class__):
                         continue
                     else:
@@ -95,7 +93,7 @@ class ConfigUpdateHandler(FileSystemEventHandler):
                 if not self.observer._handlers[w]:
                     no_watches.append(w)
                 continue
-            if w.path not in self.conf['logpathes'].keys():
+            if w.path not in self.conf['logpathes']:
                 no_watches.append(w)
         for w in no_watches:
             self.observer.unschedule(w)
@@ -123,7 +121,7 @@ class LogUpdateHandler(FileSystemEventHandler):
         global Conf
         self.conf = Conf
         self.logfiles = {}
-        for fp in self.conf['logfiles']:
+        for fp in self.conf['Filenames']:
             try:
                 logf = open(fp, 'r')
             except IOError:
