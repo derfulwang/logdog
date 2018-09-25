@@ -23,6 +23,7 @@ import click
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers.api import ObservedWatch
 
 logging.basicConfig(
     filename=os.path.join(sys.path[0],"logdog.log"),
@@ -35,9 +36,12 @@ Conf = {}  # global config
 
 class ConfigUpdateHandler(FileSystemEventHandler):
 
-    def __init__(self, conf_path):
+    def __init__(self, conf_path, observer):
         self.conf_path = conf_path
         self.conf= self.get_yaml_obj(conf_path)
+        self.observer = observer
+        self.callbacks = []
+        self.add_log_handlers()
 
     def check_config(self, conf):
         if conf:
@@ -61,6 +65,40 @@ class ConfigUpdateHandler(FileSystemEventHandler):
             self.conf = self.get_yaml_obj(self.conf_path)
             logging.info("config file <{0}> change from: {1} to {2}".format(
                 self.conf_path, last_conf, self.conf))
+            self.remove_log_handlers()
+            self.add_log_handlers()
+            print(self.observer._watches)
+
+    def add_log_handlers(self):
+        recursive = False
+        for path, fnames in self.conf['logpathes'].items():
+            ow = ObservedWatch(path, recursive)
+            if ow not in self.observer._watches:
+                self.observer.schedule(
+                    LogUpdateHandler(self.callbacks),
+                    path = path,
+                    recursive = recursive
+                )
+
+    def remove_log_handlers(self):
+        no_watches = []
+        for w in self.observer._watches:
+            if w.path == os.path.dirname(self.conf_path):
+                to_del = []
+                for h in self.observer._handlers[w]:
+                    if isinstance(h, self.__class__):
+                        continue
+                    else:
+                        to_del.append(h)
+                for h in to_del:
+                    self.observer.remove_handler_for_watch(h, w)
+                if not self.observer._handlers[w]:
+                    no_watches.append(w)
+                continue
+            if w.path not in self.conf['logpathes'].keys():
+                no_watches.append(w)
+        for w in no_watches:
+            self.observer.unschedule(w)
 
     def get_yaml_obj(self, yaml_path):
         global Conf
@@ -133,25 +171,19 @@ def keyword_detect(line, filename, conf):
 
 
 @click.command()
-@click.option('--config', default='./logdog.yaml', help='yaml config file path')
+@click.option('--config', default='logdog.yaml', help='yaml config file path')
 def main(config):
     global Conf
     if not os.path.dirname(config):
         config = os.path.join(sys.path[0], config)
-    yaml_path = config
+    yaml_path = os.path.normpath(config)
     assert os.path.isfile(yaml_path) == True
-    conf_handler = ConfigUpdateHandler(yaml_path)
-    logpathes = Conf['logpathes']
 
-    handler = LogUpdateHandler(call_backs=[])
-  
     observer = Observer()
+    conf_handler = ConfigUpdateHandler(yaml_path, observer=observer)    
     observer.schedule(
         conf_handler, path=os.path.dirname(yaml_path), recursive=False)
-
-    for path, fnames in logpathes.items():
-        observer.schedule(
-            handler, path=path, recursive=False)
+    print(observer._watches)
     observer.start()
     try:
         while True:
